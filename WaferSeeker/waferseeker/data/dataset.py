@@ -15,6 +15,13 @@ class WaferDefectDataset(Dataset):
       "image_path": "/abs/path/to/wafer.png",
       "defects": [{"type": "SCRATCH", "bbox": [x1,y1,x2,y2]}, ...]
     }
+    or lot format:
+    {
+      "lot_id": "LOT123",
+      "images": ["/abs/path/w0.png", ..., "/abs/path/w24.png"],
+      "defects": [[{...}], ..., [{...}]]  # optional, aligned per wafer
+    }
+    The lot format will be flattened into per-wafer samples.
     """
 
     def __init__(
@@ -30,7 +37,15 @@ class WaferDefectDataset(Dataset):
         self.items = []
         with open(jsonl_path, 'r') as f:
             for line in f:
-                self.items.append(json.loads(line))
+                rec = json.loads(line)
+                if isinstance(rec, dict) and 'images' in rec:
+                    imgs = rec.get('images', [])
+                    defects_list = rec.get('defects', [[] for _ in imgs])
+                    for i, img_path in enumerate(imgs):
+                        d = defects_list[i] if i < len(defects_list) else []
+                        self.items.append({"image_path": img_path, "defects": d})
+                else:
+                    self.items.append(rec)
         self.W, self.H = image_size
         self.max_seq_len = max_seq_len
         tfms = [T.Resize(image_size), T.ToTensor()]
